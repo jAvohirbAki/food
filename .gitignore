@@ -1,0 +1,8 @@
+.qa/
+data/
+.env
+node_modules/
+dist/server/
+dist/.openai/
+*.zip
+outputs/

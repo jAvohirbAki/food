@@ -1,0 +1,11 @@
+{
+  "name": "birga-owner",
+  "private": true,
+  "scripts": {
+    "start": "node serve.cjs",
+    "build": "node scripts/build.cjs",
+    "test": "node --test catalog.test.cjs seller.test.cjs server.test.cjs",
+    "test:browser": "node browser-qa.cjs"
+  },
+  "engines": { "node": ">=24" }
+}

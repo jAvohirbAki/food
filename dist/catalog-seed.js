@@ -1,0 +1,15 @@
+const seeds=[
+{id:1,name:'Sony WH-1000XM5 simsiz quloqchin',cat:'Elektronika',price:2899000,old:3499000,rating:4.9,reviews:128,img:'photo-1546435770-a3e426bf472b',badge:'−17%',desc:'Shovqinni kamaytirish funksiyasi, yumshoq quloq yostiqchalari va kun bo‘yi tinglash uchun qulay dizayn.'},
+{id:2,name:'Nike Air kundalik krossovka',cat:'Kiyimlar',price:749000,old:990000,rating:4.8,reviews:86,img:'photo-1549298916-b41d501d3772',badge:'TOP TANLOV',desc:'Kundalik sayrlar uchun yengil va qulay krossovka. Namoyish o‘lchami: 42.'},
+{id:3,name:'Minimal sopol krujka, 350 ml',cat:'Uy va ro‘zg‘or',price:89000,old:129000,rating:4.9,reviews:214,img:'photo-1514228742587-6b1558fcca3d',badge:'−31%',desc:'Tonggi qahva va sokin choy damlari uchun oddiy, chiroyli sopol krujka.'},
+{id:4,name:'Apple Watch uslubidagi aqlli soat',cat:'Elektronika',price:459000,old:599000,rating:4.7,reviews:97,img:'photo-1546868871-7041f2a55e12',badge:'−23%',desc:'Faollik, vaqt va kundalik eslatmalar uchun zamonaviy aqlli soat. Bu demo mahsulot kartasi.'},
+{id:5,name:'Aesop qo‘l parvarishi to‘plami',cat:'Go‘zallik',price:329000,old:420000,rating:4.8,reviews:63,img:'photo-1608571423902-eed4a5ad8108',badge:'YANGI',desc:'Kundalik parvarish marosimingiz uchun mahsulotlar to‘plami. Tarkib va mavjudlik haqiqiy savdo oldidan tekshiriladi.'},
+{id:6,name:'Fujifilm uslubidagi raqamli kamera',cat:'Elektronika',price:4299000,old:4999000,rating:4.9,reviews:41,img:'photo-1516035069371-29a1b244cc32',badge:'−14%',desc:'Sayohatlar va kundalik lahzalarni saqlash uchun fotoapparat. Demo katalog namunasi.'},
+{id:7,name:'Shahar uchun ixcham ryukzak',cat:'Kiyimlar',price:249000,old:349000,rating:4.8,reviews:109,img:'photo-1553062407-98eeb64c6a62',badge:'−29%',desc:'Ish, o‘qish va sayrga mos ryukzak. Kundalik buyumlar uchun qulay bo‘limlar.'},
+{id:8,name:'Interyer uchun tabiiy yashil o‘simlik',cat:'Uy va ro‘zg‘or',price:159000,old:199000,rating:4.9,reviews:74,img:'photo-1485955900006-10f4d324d411',badge:'BIRGA TANLOVI',desc:'Xonangizga yashillik va shinamlik olib kiradigan manzarali o‘simlik, gultuvagi bilan.'},
+{id:9,name:'Sport uchun qulay krossovka',cat:'Sport',price:599000,old:799000,rating:4.7,reviews:92,img:'photo-1542291026-7eec264c27ff',badge:'−25%',desc:'Faol kunlar va mashg‘ulotlar uchun sport poyabzali. Namoyish o‘lchami: 41.'},
+{id:10,name:'Bolalar uchun yumshoq ayiqcha',cat:'Bolalar',price:119000,old:159000,rating:4.9,reviews:135,img:'photo-1556012018-50c5c0da73bf',badge:'−25%',desc:'Yaqinlaringizga sovg‘a qilish uchun yumshoq o‘yinchoq. Demo katalog mahsuloti.'},
+{id:11,name:'Kundalik klassik quyosh ko‘zoynagi',cat:'Kiyimlar',price:179000,old:249000,rating:4.6,reviews:57,img:'photo-1511499767150-a48a237f0083',badge:'−28%',desc:'Kundalik obraz uchun yengil va ixcham aksessuar.'},
+{id:12,name:'Tabiiy parvarish uchun yuz serumi',cat:'Go‘zallik',price:189000,old:259000,rating:4.8,reviews:82,img:'photo-1608248543803-ba4f8c70ae0b',badge:'−27%',desc:'Go‘zallik mahsuloti namunasi. Haqiqiy xaridda mahsulot tarkibi va foydalanish yo‘riqnomasini o‘qing.'}
+];
+window.BIRGA_SEEDS=seeds;
