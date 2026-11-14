@@ -8,7 +8,7 @@ async function createApp({ databasePath = process.env.BIRGA_DB_PATH || path.join
   const DB = openDatabase(databasePath);
   const { handleApi } = await import(pathToFileURL(path.join(__dirname, 'server/api.mjs')));
   const root = path.join(__dirname, 'dist');
-  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
@@ -21,7 +21,8 @@ async function createApp({ databasePath = process.env.BIRGA_DB_PATH || path.join
       }
       if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); return res.end(); }
       let pathname = decodeURIComponent(url.pathname);
-      if (pathname === '/' || pathname === '/admin') pathname = '/admin.html';
+      if (pathname === '/') pathname = '/market.html';
+      if (pathname === '/admin') pathname = '/admin.html';
       if (pathname === '/courier') pathname = '/courier.html';
       const file = path.resolve(root, '.' + pathname);
       if (!file.startsWith(root + path.sep) || !types[path.extname(file)] || pathname.startsWith('/server/')) { res.writeHead(404); return res.end('Not found'); }

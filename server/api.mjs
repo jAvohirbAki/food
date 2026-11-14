@@ -137,7 +137,7 @@ function validateState(s, previous) {
       if (o.items.some(i => !s.menu.some(p => p.name === i.name && p.price === i.price && !p.stop))) fail(400, 'Buyurtma mahsuloti yoki narxi noto‘g‘ri.');
       if (!s.branches.some(b => b.id === o.branch && b.active) || !operatingNow(s)) fail(400, 'Filial yopiq yoki biznes band.');
     } else {
-      const immutable = ['customer', 'phone', 'note', 'address', 'branch', 'type', 'payment', 'created', 'items'];
+      const immutable = ['customer', 'phone', 'note', 'address', 'branch', 'type', 'payment', 'created', 'items', 'requestId'];
       if (immutable.some(k => JSON.stringify(o[k]) !== JSON.stringify(old[k]))) fail(400, 'Mavjud buyurtma tarkibini o‘zgartirib bo‘lmaydi.');
       let expected = old;
       if (old.status !== o.status) {
@@ -233,6 +233,7 @@ export async function handleApi(request, env, ip = 'unknown') {
       const customer = textValue(input.customer, 100), phone = textValue(input.phone, 30), address = textValue(input.address, 300), note = textValue(input.note ?? '', 2000, false);
       if (!/^\+998\d{9}$/.test(phone.replace(/[\s()-]/g, ''))) fail(400, 'Telefonni +998 bilan to‘liq kiriting.');
       if (!Array.isArray(input.items) || !input.items.length || input.items.length > 50) fail(400, 'Savatni tekshiring.');
+      if (input.items.some(i => !i || typeof i !== 'object' || Array.isArray(i))) fail(400, 'Savatni tekshiring.');
       if (new Set(input.items.map(i => i?.id)).size !== input.items.length) fail(400, 'Savatda takroriy taom bor.');
       const row = await db.prepare("SELECT * FROM businesses WHERE id=? AND kind='restaurant'").bind(restaurantId).first();
       if (!row) fail(404, 'Restoran topilmadi.');

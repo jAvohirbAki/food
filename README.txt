@@ -86,12 +86,16 @@ Ish jadvali shu biznesning barcha filiallariga tegishli; vaqt Asia/Tashkent.
 Filiallar alohida yopilishi mumkin. Band/yopiq holatda yangi buyurtma
 yaratilmaydi, mavjud buyurtmalar boshqariladi.
 
-Hali ulanmagan: xaridor saytidan buyurtma qabul qilish, Click/Payme/bank,
+Hali ulanmagan: Click/Payme/bank,
 fiskal printer, email tasdiqlash/parolni tiklash, xodimlarning alohida logini
 va sharhlar moderatsiyasi. Xodim rollari hozir biznes ichidagi konfiguratsiya;
 kabinetga faqat biznes egasi kiradi. Bank to‘lovlari sotuv bilan tenglashtirilmaydi.
 Chek brauzerning chop etish oynasini ochadi, fiskal chek hisoblanmaydi.
 
-Oldingi market.html prototipi va localStorage katalogi alohida saqlangan;
-egasi kabinetining API/bazasiga ulanmagan. Eski demo ma’lumotlar egasi hisobiga
-avtomatik ko‘chirilmaydi. D1 yoki SQLite ichidagi haqiqiy ma’lumotlar ustuvor.
+Xaridor sahifasi: / yoki /market.html. Restoran menyulari /api/food/restaurants dan olinadi.
+Buyurtmalar /api/food/orders orqali egasi kabinetiga yoziladi. Narx, ish vaqti,
+filial va taom mavjudligi serverda tekshiriladi. Takror yuborish requestId orqali
+bitta buyurtma sifatida qaytariladi. To‘lov yetkazilganda naqd; yetkazish narxi va
+vaqtini restoran tasdiqlaydi. Namuna menyulardan haqiqiy buyurtma yuborilmaydi.
+Restoran katalogi bo‘sh bo‘lsa namuna menyular ko‘rinadi.
+Xaridor brauzer tekshiruvi: node scripts/food-browser-qa.cjs

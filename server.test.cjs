@@ -32,6 +32,35 @@ async function harness(t, databasePath = ':memory:') {
   return { server, base, close, request, register, business, state, save };
 }
 
+test('food catalog exposes only menu data and customer orders reach owner exactly once', async t => {
+  const h = await harness(t), cookie = await h.register(), id = await h.business(cookie, 'Food QA');
+  const shop = await h.business(cookie, 'Hidden Shop', 'shop');
+  const state = await h.state(cookie, id);
+  const minute = new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Tashkent', minute:'2-digit' }).format(new Date());
+  state.state.hours.forEach(h => { h.open = minute === '59' ? '00:01' : '00:00'; h.close = minute === '59' ? '00:00' : '23:59'; h.off = false; });
+  state.state.menu = [{ id:1, name:'Osh', cat:'Milliy taomlar', price:38000, img:'', modifiers:'', stop:false },{ id:2, name:'Kabob', cat:'Milliy taomlar', price:50000, img:'', modifiers:'', stop:true }];
+  assert.equal((await h.save(cookie,id,state)).status,200);
+  const catalog = await h.request('/food/restaurants');
+  assert.equal(catalog.status,200); assert.equal(catalog.data.restaurants.length,1);
+  const r = catalog.data.restaurants[0]; assert.equal(r.id,id); assert.equal(r.open,true);
+  assert.equal(r.orders,undefined); assert.equal(r.staff,undefined); assert.equal(r.owner_id,undefined);
+  const payload = { restaurantId:id, requestId:crypto.randomUUID(), branch:1, customer:'Customer', phone:'+998901234567', address:'Toshkent, 12-uy', note:'Piyozsiz', items:[{id:1,qty:2,price:38000}] };
+  assert.equal((await h.request('/food/orders',{data:{...payload,items:[{id:1,qty:2,price:1}]}})).status,409);
+  assert.equal((await h.request('/food/orders',{data:{...payload,items:[{id:2,qty:1,price:50000}]}})).status,409);
+  assert.equal((await h.request('/food/orders',{data:{...payload,phone:'123'}})).status,400);
+  assert.equal((await h.request('/food/orders',{data:{...payload,branch:99}})).status,409);
+  assert.equal((await h.request('/food/orders',{data:{...payload,items:[null]}})).status,400);
+  const result = await h.request('/food/orders',{data:payload}); assert.equal(result.status,201,JSON.stringify(result.data)); assert.equal(result.data.order.total,76000);
+  const duplicate = await h.request('/food/orders',{data:payload}); assert.equal(duplicate.status,200); assert.equal(duplicate.data.order.id,result.data.order.id);
+  const owner = await h.state(cookie,id); assert.equal(owner.state.orders.length,1); assert.equal(owner.state.orders[0].customer,'Customer'); assert.equal(owner.state.orders[0].status,'new'); assert.equal(owner.state.orders[0].payment,'Naqd');
+  assert.equal((await h.state(cookie,shop)).state.orders.length,0);
+  const stale = await h.save(cookie,id,state); assert.equal(stale.status,409);
+  owner.state.orders[0].status='preparing'; owner.state.orders[0].minutes=20;
+  assert.equal((await h.save(cookie,id,owner)).status,200);
+  const busy = await h.state(cookie,id); busy.state.busy=true; assert.equal((await h.save(cookie,id,busy)).status,200);
+  assert.equal((await h.request('/food/orders',{data:{...payload,requestId:crypto.randomUUID()}})).status,409);
+});
+
 test('authentication, CSRF protection, password validation and session revocation', async t => {
   const h = await harness(t);
   assert.equal((await h.request('/businesses')).status, 401);
@@ -128,7 +157,11 @@ test('built Worker serves assets and uses the same database/authentication API',
   const source = await fs.readFile(path.join(__dirname, 'dist/server/index.js'), 'utf8');
   const worker = (await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))).default;
   const page = await worker.fetch(new Request('https://birga.example/'), { DB });
-  assert.equal(page.status, 200); assert.match(await page.text(), /BIRGA Owner/);
+  assert.equal(page.status, 200); assert.match(await page.text(), /food.js/);
+  const adminPage = await worker.fetch(new Request('https://birga.example/admin'), { DB });
+  assert.equal(adminPage.status, 200); assert.match(await adminPage.text(), /BIRGA Owner/);
+  const placeholder = await worker.fetch(new Request('https://birga.example/food-placeholder.svg'), { DB });
+  assert.equal(placeholder.headers.get('Content-Type'), 'image/svg+xml; charset=utf-8');
   assert.equal((await worker.fetch(new Request('https://birga.example/owner.css'), { DB })).status, 200);
   const response = await worker.fetch(new Request('https://birga.example/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Birga-Request': '1' }, body: JSON.stringify({ name: 'Worker Owner', email: 'worker@example.com', password: 'WorkerPassword-2026' }) }), { DB });
   assert.equal(response.status, 201, await response.clone().text());
