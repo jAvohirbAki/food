@@ -135,4 +135,11 @@ test('built Worker serves assets and uses the same database/authentication API',
   assert.match(response.headers.get('set-cookie'), /; Secure/);
   const cookie = response.headers.get('set-cookie').split(';')[0];
   assert.equal((await worker.fetch(new Request('https://birga.example/api/businesses', { headers: { Cookie: cookie } }), { DB })).status, 200);
+  const courierPage = await worker.fetch(new Request('https://birga.example/courier'), { DB });
+  assert.equal(courierPage.status, 200); assert.match(await courierPage.text(), /BIRGA Kuryer/);
+  const courierResponse = await worker.fetch(new Request('https://birga.example/api/courier/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Birga-Request': '1' }, body: JSON.stringify({ name: 'Worker Courier', email: 'courier-worker@example.com', password: 'CourierPassword-2026', phone: '+998901234567', vehicle: 'car', city: 'Toshkent' }) }), { DB });
+  assert.equal(courierResponse.status, 201, await courierResponse.clone().text());
+  const courierCookie = courierResponse.headers.get('set-cookie').split(';')[0];
+  const dashboard = await worker.fetch(new Request('https://birga.example/api/courier/dashboard', { headers: { Cookie: courierCookie } }), { DB });
+  assert.equal(dashboard.status, 200); assert.equal((await dashboard.json()).profile.vehicle, 'car');
 });

@@ -6,6 +6,41 @@ Kabinet: http://127.0.0.1:4173/admin.html
 Yangi hisob yarating, keyin restoran, do‘kon, xizmat yoki boshqa biznes qo‘shing.
 Oldindan belgilangan login/parol yo‘q. Parol kamida 10 belgidan iborat.
 
+KURYER KABINETI
+Havola: http://127.0.0.1:4173/courier
+Internetda ham o‘sha saytning /courier yo‘li ishlaydi. Egasi va kuryer uchun
+alohida hisoblar hamda cookie sessiyalari bor; bir brauzerda ikkalasi ishlaydi.
+Kuryer ro‘yxatdan o‘tishda telefon, transport va shaharni kiritadi.
+
+Egasi biznesni tanlab Kuryerlar bo‘limida taklif kodi yaratadi. Kod 7 kun
+amal qiladi; yangi kod oldingisini bekor qiladi. Kuryer kod orqali biznesga
+ulanadi, keyin Ishni boshlash tugmasi bilan onlayn bo‘ladi.
+Yangi courier_* jadvallari va deliveries drizzle/0001_couriers.sql orqali
+yaratiladi. Oldingi egasi ma’lumotlari saqlanadi.
+
+Yetkazish jarayoni:
+1. Egasi yetkazib berish buyurtmasida mijoz telefoni va manzilini kiritadi.
+   Filialning haqiqiy manzili Ish vaqti bo‘limida, telefon Sozlamalarda kiritiladi.
+2. Buyurtma tayyor bo‘lganda Kuryerga yuborish bosiladi va yetkazish haqi yoziladi.
+3. Faqat biznesga ulangan onlayn kuryerlar tayyor yetkazishni ko‘radi.
+4. Kuryer Buyurtmani olish -> Buyurtmani oldim -> Mijozga yetkazdim orqali ishlaydi.
+5. Yakunlanganda egasi buyurtmasi ham bazada atomik tarzda yakunlanadi,
+   uning sotuviga va kuryerning hisoblangan haqiga kiritiladi.
+
+Bir buyurtmani faqat bir kuryer olishi va kuryerda faqat bitta faol yetkazish
+bo‘lishi serverda tekshiriladi. Kuryer hali olib ketmagan buyurtmani sabab bilan
+qaytarishi mumkin. Olib ketilgan buyurtma qaytarilmaydi. Egasi faqat kuryer
+olmagan yetkazishni bekor qila oladi. Faol yetkazishi bor kuryer uzilmaydi;
+ulanish uzilganda eski taklif kodi ham bekor bo‘ladi. Boshqa ulangan kuryerlar qoladi.
+Mijozning telefoni, manzili va buyurtma tarkibi faqat olgan kuryerga ochiladi;
+yakunlangan tarixda bu shaxsiy ma’lumotlar berilmaydi.
+
+Kabinet manzilni tashqi xaritada ochish va telefon qilish havolalarini beradi.
+Jonli GPS kuzatuv, yo‘l masofasi hisoblash, SMS, push va avtomatik pul chiqarish
+ulanmagan. Daromad — biznes belgilagan hisoblangan haq, bank tushumi emas.
+Kuryer ekrani 20 soniyada, egasining Buyurtmalar/Kuryerlar bo‘limlari 15 soniyada
+yangilanadi; har ikkala tomonda qo‘lda Yangilash tugmasi ham mavjud.
+
 Saqlash: mahalliy server SQLite bazasini data/birga.sqlite da yaratadi.
 HOST (standart 127.0.0.1), PORT (4173) va BIRGA_DB_PATH muhit orqali sozlanadi.
 data/ papkasini ommaviy web papkasiga qo‘ymang va Gitga qo‘shmang.

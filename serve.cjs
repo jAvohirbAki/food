@@ -22,6 +22,7 @@ async function createApp({ databasePath = process.env.BIRGA_DB_PATH || path.join
       if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); return res.end(); }
       let pathname = decodeURIComponent(url.pathname);
       if (pathname === '/' || pathname === '/admin') pathname = '/admin.html';
+      if (pathname === '/courier') pathname = '/courier.html';
       const file = path.resolve(root, '.' + pathname);
       if (!file.startsWith(root + path.sep) || !types[path.extname(file)] || pathname.startsWith('/server/')) { res.writeHead(404); return res.end('Not found'); }
       const data = await fs.readFile(file);

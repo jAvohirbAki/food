@@ -23,10 +23,16 @@ function openDatabase(filename) {
     const bound = values => ({
       first: async () => statement.get(...values) ?? null,
       all: async () => ({ results: statement.all(...values) }),
-      run: async () => ({ meta: { changes: statement.run(...values).changes } })
+      run: async () => ({ meta: { changes: statement.run(...values).changes } }),
+      _run: () => ({ meta: { changes: statement.run(...values).changes } })
     });
     return { bind: (...values) => bound(values), ...bound([]) };
   }
-  return { prepare, close: () => sqlite.close() };
+  async function batch(statements) {
+    sqlite.exec('BEGIN IMMEDIATE');
+    try { const results = statements.map(statement => statement._run()); sqlite.exec('COMMIT'); return results; }
+    catch (error) { sqlite.exec('ROLLBACK'); throw error; }
+  }
+  return { prepare, batch, close: () => sqlite.close() };
 }
 module.exports = { openDatabase };

@@ -73,7 +73,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await until("!document.querySelector('#auth-screen')?.hidden");
     await click('#auth-toggle');
     await fill('#auth-form', { name: 'Dilshod Karimov', email: 'owner-qa@example.com', password: 'OwnerQaPassword-2026' });
-    await until("document.querySelectorAll('#navigation button').length===10", 'owner dashboard');
+    await until("document.querySelectorAll('#navigation button').length===11", 'owner dashboard');
     assert.ok(await evaluate("document.querySelector('.portfolio-empty').textContent.includes('Birinchi biznes')"));
     assert.equal(await evaluate("document.querySelectorAll('#navigation button:disabled').length"), 0);
     await click('[data-view="orders"]');
@@ -146,7 +146,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await until("document.querySelector('[data-view=orders]').getAttribute('aria-current')==='page'");
     await delay(150);
     assert.equal(await evaluate("document.querySelector('[data-view=orders]').getAttribute('aria-current')"), 'page');
-    for (const name of ['orders','menu','hours','promos','finance','analytics','reviews','staff','settings','overview']) {
+    for (const name of ['orders','menu','hours','promos','finance','analytics','reviews','couriers','staff','settings','overview']) {
       await view(name); assert.ok(await evaluate("document.querySelector('#content').textContent.length>50"), name + ' renders');
     }
     for (const viewport of [{ width: 1440, height: 1050, mobile: false, name: 'owner-desktop' }, { width: 390, height: 844, mobile: true, name: 'owner-mobile' }]) {
@@ -158,10 +158,64 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       const capture = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       await fs.writeFile(path.join(artifacts, viewport.name + '.png'), Buffer.from(capture.data, 'base64'));
     }
+    // End-to-end owner dispatch -> courier invitation -> delivery -> owner completion.
+    await view('hours'); await click('[data-action="branch"][data-id="1"]'); await submit({ name: 'Amir Temur', address: 'Amir Temur ko‘chasi, 24, Toshkent' });
+    await view('settings'); await fill('#settings-form', { phone: '+998901111111', address: 'Amir Temur ko‘chasi, 24, Toshkent' });
+    await until("!document.body.classList.contains('saving') && document.querySelector('#save-status').textContent==='Bazada saqlandi'");
+    await view('orders'); await click('#page-action');
+    await submit({ customer: 'Malika', phone: '+998902222222', qty: 2, type: 'Yetkazib berish', payment: 'Naqd', address: 'Yunusobod 4-mavze, 18-uy', note: 'Eshik oldida qo‘ng‘iroq qiling' });
+    await click('[data-action="accept"][data-id="2"]'); await submit({ minutes: 20 });
+    await click('[data-tab="preparing"]'); await click('[data-action="ready"][data-id="2"]');
+    await until("!document.body.classList.contains('saving') && document.querySelector('#save-status').textContent==='Bazada saqlandi'");
+    await click('[data-tab="ready"]'); await click('[data-action="dispatch"][data-id="2"]'); await submit({ fee: 18000 });
+    assert.ok(await evaluate("document.querySelector('.delivery-status').textContent.includes('Kuryer kutilmoqda')"));
+    await view('couriers'); await click('#page-action'); await until('!!OwnerAPI.invite?.code');
+    const invite = await evaluate('OwnerAPI.invite.code');
+    await send('Page.navigate', { url: base + '/courier' });
+    await until("!!document.querySelector('#courier-auth') && !document.querySelector('#courier-auth').hidden");
+    await click('#auth-toggle');
+    await fill('#courier-auth-form', { name: 'Sardor Aliyev', phone: '+998903333333', vehicle: 'motorcycle', city: 'Toshkent', email: 'courier-qa@example.com', password: 'CourierQaPassword-2026' });
+    await until("!document.querySelector('#courier-app')?.hidden");
+    await click('[data-action="join"]'); await fill('#join-form', { code: 'wrong-code' });
+    await until("document.querySelector('#join-error').textContent.length>0");
+    await fill('#join-form', { code: invite }); await until("!document.querySelector('#join-dialog').open");
+    await click('#online-button'); await until("document.querySelector('#online-button').getAttribute('aria-pressed')==='true' && document.querySelectorAll('.job-card').length===1");
+    assert.ok(!await evaluate("document.querySelector('.job-card').textContent.includes('Yunusobod')"));
+    await click('[data-action="accept"]'); await until("!!document.querySelector('.delivery-detail')");
+    assert.ok(await evaluate("document.querySelector('.destination').textContent.includes('Yunusobod')"));
+    assert.equal(await evaluate("document.querySelector('a[href=\"tel:+998902222222\"]').textContent"), '☎ Mijozga qo‘ng‘iroq');
+    for (const viewport of [{ width: 1440, height: 1050, mobile: false, name: 'courier-desktop' }, { width: 390, height: 844, mobile: true, name: 'courier-mobile' }]) {
+      await send('Emulation.setDeviceMetricsOverride', { width: viewport.width, height: viewport.height, mobile: viewport.mobile, deviceScaleFactor: 1 });
+      for (const tab of ['jobs','active','earnings','profile']) {
+        await click(`button[data-view="${tab}"]`);
+        assert.ok(await evaluate('document.documentElement.scrollWidth<=window.innerWidth'), 'courier ' + tab + ' overflows ' + viewport.width);
+      }
+      await click('button[data-view="active"]');
+      const capture = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      await fs.writeFile(path.join(artifacts, viewport.name + '.png'), Buffer.from(capture.data, 'base64'));
+    }
+    await click('[data-action="pickup"]'); await until("!!document.querySelector('[data-action=deliver]')");
+    await click('[data-action="deliver"]'); await fill('#action-form', {});
+    await until("!document.querySelector('#action-dialog').open && document.querySelectorAll('.history-list article').length===1");
+    const courierData = await evaluate("fetch('/api/courier/dashboard').then(r=>r.json())");
+    assert.equal(courierData.stats.earned, 18000); assert.equal(courierData.active.length, 0);
+    await click('button[data-view="profile"]'); await fill('#profile-form', { name: 'Sardor Kuryer', phone: '+998903333333', vehicle: 'car', city: 'Toshkent' });
+    await until("document.querySelector('#rider-name').textContent==='Sardor Kuryer'");
+    await evaluate('window.qaBeforeReload=true'); await send('Page.reload');
+    await until("window.qaBeforeReload===undefined && !!document.querySelector('#courier-app') && !document.querySelector('#courier-app').hidden");
+    assert.equal(await evaluate("document.querySelector('#rider-name').textContent"), 'Sardor Kuryer');
+    await click('button[data-view="profile"]'); await click('[data-action="logout"]');
+    await until("!!document.querySelector('#courier-auth') && !document.querySelector('#courier-auth').hidden");
+    // Logging the courier out does not sign the business owner out.
+    await send('Page.navigate', { url: base + '/admin.html' });
+    await until("!!document.querySelector('#navigation') && document.querySelectorAll('#navigation button').length===11 && !!OwnerAPI.business");
+    const deliveredOwner = await evaluate(`OwnerAPI.request('/businesses/${restaurant}/state')`);
+    assert.equal(deliveredOwner.state.orders.find(o=>o.id===2).status, 'done');
+    assert.equal(deliveredOwner.deliveries.find(d=>d.orderId===2).status, 'delivered');
     await click('#logout-button'); await until("!document.querySelector('#auth-screen')?.hidden");
     await fill('#auth-form', { email: 'owner-qa@example.com', password: 'OwnerQaPassword-2026' });
     await until("document.querySelectorAll('.business-card').length===3");
     assert.deepEqual(errors, []);
-    console.log('Browser QA passed: navigation with no business, single-business auto-selection, multi-business chooser, selection after reload, signup/login/logout, isolated records, order lifecycle, failed writes, CSV import, 10 sections, desktop/mobile layouts.');
+    console.log('Browser QA passed: owner navigation, 3 business types, isolated records, owner dispatch, courier signup/invite/claim/pickup/delivery, independent sessions, profile persistence, server-synced completion, CSV import, 11 owner sections and 4 courier sections, desktop/mobile layouts.');
   } finally { if (ws) ws.close(); browser.kill(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

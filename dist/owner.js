@@ -2,7 +2,7 @@
   'use strict';
   const $ = s => document.querySelector(s);
   const kinds = { restaurant: 'Restoran / kafe', shop: 'Do‘kon', service: 'Xizmat ko‘rsatish', other: 'Boshqa biznes' };
-  const API = window.OwnerAPI = { user: null, businesses: [], business: null, kinds };
+  const API = window.OwnerAPI = { user: null, businesses: [], business: null, deliveries: [], couriers: [], kinds };
   API.request = async (path, data, method = 'POST') => {
     let response;
     try {
@@ -17,7 +17,9 @@
   API.remember = id => { try { sessionStorage.setItem('birga.business.' + API.user.id, id); } catch {} };
   API.open = async (id, view = 'orders') => {
     const result = await API.request('/businesses/' + id + '/state');
+    if (API.business?.id !== id) API.invite = null;
     API.business = result.business;
+    API.deliveries = result.deliveries || []; API.couriers = result.couriers || [];
     API.remember(id);
     API.updateSwitcher();
     window.dispatchEvent(new CustomEvent('birga:business', { detail: { ...result, view } }));
@@ -56,8 +58,23 @@
     if (!API.business) throw Error('Avval biznesni tanlang.');
     const result = await API.request('/businesses/' + API.business.id + '/state', { revision: API.business.revision, state }, 'PUT');
     API.business = result.business;
+    API.deliveries = result.deliveries || []; API.couriers = result.couriers || [];
     API.updateSwitcher();
     return result.state;
+  };
+  API.reload = async () => {
+    if (!API.business) return;
+    const id = API.business.id, result = await API.request('/businesses/' + id + '/state');
+    if (API.business?.id !== id || result.business.revision < API.business.revision) return;
+    API.business = result.business; API.deliveries = result.deliveries || []; API.couriers = result.couriers || [];
+    API.updateSwitcher(); window.dispatchEvent(new CustomEvent('birga:refresh', { detail: result }));
+  };
+  API.courierAction = async (action, payload = {}) => {
+    if (!API.business) throw Error('Avval biznesni tanlang.');
+    const result = await API.request('/businesses/' + API.business.id + '/' + action, payload);
+    if (result.deliveries) API.deliveries = result.deliveries;
+    if (result.couriers) API.couriers = result.couriers;
+    return result;
   };
   API.updateSwitcher = () => {
     const select = $('#business-select');

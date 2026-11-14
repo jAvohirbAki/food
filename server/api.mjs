@@ -1,4 +1,5 @@
 import '../dist/seller-core.js';
+import { createCourierRoutes } from './courier.mjs';
 
 const Core = globalThis.SellerCore;
 const enc = new TextEncoder();
@@ -22,8 +23,8 @@ async function hashPassword(password, salt) {
   return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: enc.encode(salt), iterations: 100000, hash: 'SHA-256' }, key, 256));
 }
 function equalHash(a, b) { let diff = a.length ^ b.length; for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ (b.charCodeAt(i) || 0); return diff === 0; }
-function cookie(request, token, maxAge = SESSION_AGE / 1000) {
-  return `birga_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}`;
+function cookie(request, token, maxAge = SESSION_AGE / 1000, courier = false) {
+  return `${courier ? 'birga_courier_session' : 'birga_session'}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}`;
 }
 function json(value, status = 200, headers = {}) {
   return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers } });
@@ -50,10 +51,13 @@ async function limit(db, key, maximum, duration) {
   const row = await db.prepare('SELECT attempts FROM auth_limits WHERE key=?').bind(key).first();
   if (row.attempts > maximum) fail(429, 'Urinishlar ko‘paydi. Birozdan so‘ng qayta urinib ko‘ring.');
 }
-async function currentUser(request, db) {
-  const token = request.headers.get('cookie')?.match(/(?:^|;\s*)birga_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+function sessionToken(request, courier = false) {
+  return request.headers.get('cookie')?.match(new RegExp('(?:^|;\\s*)' + (courier ? 'birga_courier_session' : 'birga_session') + '=([a-f0-9]{64})(?:;|$)'))?.[1];
+}
+async function currentUser(request, db, courier = false) {
+  const token = sessionToken(request, courier);
   if (!token) return null;
-  return db.prepare('SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(await digest(token), Date.now()).first();
+  return db.prepare(`SELECT u.id,u.name,u.email FROM ${courier ? 'courier_sessions' : 'sessions'} s JOIN ${courier ? 'courier_accounts' : 'users'} u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?`).bind(await digest(token), Date.now()).first();
 }
 function freshState(name, owner, kind) {
   const s = Core.seed();
@@ -158,52 +162,105 @@ async function createBusiness(db, owner, input) {
   return { id, name, kind: input.kind, revision: 1, updatedAt: now };
 }
 
+const Courier = createCourierRoutes({ fail, number, textValue, digest, random, json, body, limit, Core });
+
 export async function handleApi(request, env, ip = 'unknown') {
   const db = env.DB;
   try {
     if (!db) fail(503, 'Ma’lumotlar bazasi ulanmagan.');
     const url = new URL(request.url), route = url.pathname, method = request.method;
+    const courier = route.startsWith('/api/courier/');
+    const auth = courier ? '/api/courier/auth' : '/api/auth';
+    const accounts = courier ? 'courier_accounts' : 'users', sessions = courier ? 'courier_sessions' : 'sessions';
     if (!['GET', 'POST', 'PUT'].includes(method)) fail(405, 'So‘rov usuli qo‘llanmaydi.');
     if (method !== 'GET') {
       if (request.headers.get('x-birga-request') !== '1') fail(403, 'So‘rov himoyasi noto‘g‘ri.');
       const origin = request.headers.get('origin');
       if (origin && origin !== url.origin) fail(403, 'Boshqa saytdan so‘rov qabul qilinmaydi.');
     }
-    if (route === '/api/auth/register' && method === 'POST') {
-      await limit(db, 'register:' + await digest(ip), 10, 3600000);
+    if (route === auth + '/register' && method === 'POST') {
+      await limit(db, (courier ? 'courier-' : '') + 'register:' + await digest(ip), 10, 3600000);
       const input = await body(request);
       const name = textValue(input.name, 100), email = textValue(input.email, 254).toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'Email manzilini to‘g‘ri kiriting.');
       const password = textValue(input.password, 128); if (password.length < 10) fail(400, 'Parol kamida 10 belgidan iborat bo‘lsin.');
+      const profile = courier ? Courier.profileValues(input) : null;
       const user = { id: crypto.randomUUID(), name, email }, salt = random();
       const passwordHash = await hashPassword(input.password, salt);
-      try { await db.prepare('INSERT INTO users (id,email,name,password_hash,salt,created_at) VALUES (?,?,?,?,?,?)').bind(user.id, email, name, passwordHash, salt, Date.now()).run(); }
+      try {
+        if (courier) await db.prepare('INSERT INTO courier_accounts (id,email,name,password_hash,salt,created_at,phone,vehicle,city) VALUES (?,?,?,?,?,?,?,?,?)').bind(user.id, email, name, passwordHash, salt, Date.now(), profile.phone, profile.vehicle, profile.city).run();
+        else await db.prepare('INSERT INTO users (id,email,name,password_hash,salt,created_at) VALUES (?,?,?,?,?,?)').bind(user.id, email, name, passwordHash, salt, Date.now()).run();
+      }
       catch (e) { if (/unique/i.test(e.message)) fail(409, 'Bu email bilan hisob mavjud. Kirish bo‘limidan foydalaning.'); throw e; }
-      const token = random(); await db.prepare('INSERT INTO sessions VALUES (?,?,?)').bind(await digest(token), user.id, Date.now() + SESSION_AGE).run();
-      return json({ user }, 201, { 'Set-Cookie': cookie(request, token) });
+      const token = random(); await db.prepare(`INSERT INTO ${sessions} VALUES (?,?,?)`).bind(await digest(token), user.id, Date.now() + SESSION_AGE).run();
+      return json({ user }, 201, { 'Set-Cookie': cookie(request, token, SESSION_AGE / 1000, courier) });
     }
-    if (route === '/api/auth/login' && method === 'POST') {
-      await limit(db, 'login-ip:' + await digest(ip), 100, 900000);
+    if (route === auth + '/login' && method === 'POST') {
+      await limit(db, (courier ? 'courier-' : '') + 'login-ip:' + await digest(ip), 100, 900000);
       const input = await body(request), email = textValue(input.email, 254).toLowerCase();
-      await limit(db, 'login-email:' + await digest(email), 12, 900000);
+      const loginKey = (courier ? 'courier-' : '') + 'login-email:' + await digest(email);
+      await limit(db, loginKey, 12, 900000);
       textValue(input.password, 128);
-      const row = await db.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
+      const row = await db.prepare(`SELECT * FROM ${accounts} WHERE email=?`).bind(email).first();
       const hash = await hashPassword(input.password, row?.salt ?? 'nonexistent-user-padding');
       if (!row || !equalHash(hash, row.password_hash)) fail(401, 'Email yoki parol noto‘g‘ri.');
       const token = random();
-      await db.prepare('DELETE FROM sessions WHERE expires_at<=?').bind(Date.now()).run();
-      await db.prepare('INSERT INTO sessions VALUES (?,?,?)').bind(await digest(token), row.id, Date.now() + SESSION_AGE).run();
-      await db.prepare('DELETE FROM auth_limits WHERE key=?').bind('login-email:' + await digest(email)).run();
-      return json({ user: { id: row.id, name: row.name, email: row.email } }, 200, { 'Set-Cookie': cookie(request, token) });
+      await db.prepare(`DELETE FROM ${sessions} WHERE expires_at<=?`).bind(Date.now()).run();
+      await db.prepare(`INSERT INTO ${sessions} VALUES (?,?,?)`).bind(await digest(token), row.id, Date.now() + SESSION_AGE).run();
+      await db.prepare('DELETE FROM auth_limits WHERE key=?').bind(loginKey).run();
+      return json({ user: { id: row.id, name: row.name, email: row.email } }, 200, { 'Set-Cookie': cookie(request, token, SESSION_AGE / 1000, courier) });
     }
-    if (route === '/api/auth/logout' && method === 'POST') {
-      const token = request.headers.get('cookie')?.match(/(?:^|;\s*)birga_session=([a-f0-9]{64})(?:;|$)/)?.[1];
-      if (token) await db.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await digest(token)).run();
-      return json({ ok: true }, 200, { 'Set-Cookie': cookie(request, '', 0) });
+    if (route === auth + '/logout' && method === 'POST') {
+      const token = sessionToken(request, courier);
+      if (token) await db.prepare(`DELETE FROM ${sessions} WHERE token_hash=?`).bind(await digest(token)).run();
+      return json({ ok: true }, 200, { 'Set-Cookie': cookie(request, '', 0, courier) });
     }
-    const user = await currentUser(request, db);
+    if (route === '/api/food/restaurants' && method === 'GET') {
+      const { results } = await db.prepare("SELECT id,name,state FROM businesses WHERE kind='restaurant' ORDER BY updated_at DESC").all();
+      return json({ restaurants: results.map(row => {
+        const s = JSON.parse(row.state);
+        return { id: row.id, name: s.settings.name, address: s.settings.address, logo: s.settings.logo,
+          open: operatingNow(s) && s.branches.some(b => b.active),
+          branches: s.branches.filter(b => b.active).map(b => ({ id: b.id, name: b.name, address: b.address })),
+          categories: s.categories, menu: s.menu.map(p => ({ id: p.id, name: p.name, cat: p.cat, price: p.price, img: p.img, stop: p.stop })) };
+      }).filter(r => r.menu.length) });
+    }
+    if (route === '/api/food/orders' && method === 'POST') {
+      await limit(db, 'food:' + await digest(ip), 30, 3600000);
+      const input = await body(request);
+      const restaurantId = textValue(input.restaurantId, 36), requestId = textValue(input.requestId, 64);
+      if (!/^[a-f0-9-]{36}$/.test(restaurantId) || !/^[a-f0-9-]{36}$/.test(requestId)) fail(400, 'Buyurtma identifikatori noto‘g‘ri.');
+      const customer = textValue(input.customer, 100), phone = textValue(input.phone, 30), address = textValue(input.address, 300), note = textValue(input.note ?? '', 2000, false);
+      if (!/^\+998\d{9}$/.test(phone.replace(/[\s()-]/g, ''))) fail(400, 'Telefonni +998 bilan to‘liq kiriting.');
+      if (!Array.isArray(input.items) || !input.items.length || input.items.length > 50) fail(400, 'Savatni tekshiring.');
+      if (new Set(input.items.map(i => i?.id)).size !== input.items.length) fail(400, 'Savatda takroriy taom bor.');
+      const row = await db.prepare("SELECT * FROM businesses WHERE id=? AND kind='restaurant'").bind(restaurantId).first();
+      if (!row) fail(404, 'Restoran topilmadi.');
+      const s = JSON.parse(row.state);
+      const prior = s.orders.find(o => o.requestId === requestId);
+      if (prior) return json({ order: { id: prior.id, total: Core.total(prior), status: prior.status, restaurant: s.settings.name } });
+      const branch = s.branches.find(b => b.id === input.branch && b.active);
+      if (!branch || !operatingNow(s)) fail(409, 'Restoran hozir buyurtma qabul qilmayapti.');
+      if (s.orders.length >= 3000) fail(409, 'Restoran buyurtmalar chegarasiga yetgan.');
+      const items = input.items.map(i => {
+        number(i.id, 1, Number.MAX_SAFE_INTEGER, true); number(i.qty, 1, 50, true);
+        const p = s.menu.find(p => p.id === i.id && !p.stop);
+        if (!p) fail(409, 'Taom hozir mavjud emas. Menyuni yangilang.');
+        if (i.price !== p.price) fail(409, 'Taom narxi o‘zgargan. Sahifani yangilang.');
+        return { name: p.name, qty: i.qty, price: p.price };
+      });
+      const now = Date.now(), order = { id: Math.max(0, ...s.orders.map(o => o.id)) + 1, requestId, customer, phone, address, note, branch: branch.id, type: 'Yetkazib berish', payment: 'Naqd', status: 'new', created: now, items };
+      s.orders.unshift(order);
+      const result = await db.prepare('UPDATE businesses SET state=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?').bind(JSON.stringify(s), now, row.id, row.revision).run();
+      if (result.meta.changes !== 1) fail(409, 'Restoran ma’lumoti yangilandi. Qayta urinib ko‘ring.');
+      return json({ order: { id: order.id, total: Core.total(order), status: order.status, restaurant: s.settings.name } }, 201);
+    }
+    const user = await currentUser(request, db, courier);
     if (!user) fail(401, 'Davom etish uchun hisobingizga kiring.');
-    if (route === '/api/auth/me' && method === 'GET') return json({ user });
+    if (route === auth + '/me' && method === 'GET') return json({ user });
+    if (courier) return await Courier.handleCourier(request, db, user, route, method);
+    const ownerCourierResponse = await Courier.handleOwner(request, db, user, route, method);
+    if (ownerCourierResponse) return ownerCourierResponse;
     if (route === '/api/businesses' && method === 'POST') {
       await limit(db, 'business:' + user.id, 30, 3600000);
       return json({ business: await createBusiness(db, user, await body(request)) }, 201);
@@ -220,16 +277,19 @@ export async function handleApi(request, env, ip = 'unknown') {
     if (match && ['GET', 'PUT'].includes(method)) {
       const row = await db.prepare('SELECT * FROM businesses WHERE id=? AND owner_id=?').bind(match[1], user.id).first();
       if (!row) fail(404, 'Biznes topilmadi.');
-      if (method === 'GET') return json({ business: businessInfo(row), state: JSON.parse(row.state) });
+      if (method === 'GET') return json({ business: businessInfo(row), state: JSON.parse(row.state), ...await Courier.ownerData(db, row.id) });
       const input = await body(request);
       if (input.revision !== row.revision) fail(409, 'Boshqa oynada o‘zgarish bor. Sahifani yangilab qayta urinib ko‘ring.');
       let state;
       try { state = validateState(input.state, JSON.parse(row.state)); }
       catch (error) { if (error.status) throw error; fail(400, 'Kabinet ma’lumoti noto‘g‘ri.'); }
       const now = Date.now();
-      const result = await db.prepare('UPDATE businesses SET state=?,name=?,revision=revision+1,updated_at=? WHERE id=? AND owner_id=? AND revision=?').bind(JSON.stringify(state), state.settings.name, now, row.id, user.id, input.revision).run();
+      // Protect dispatched orders in the SQL UPDATE too, including a dispatch racing this save.
+      const previous = JSON.parse(row.state), changed = previous.orders.filter(old => state.orders.find(o => o.id === old.id)?.status !== old.status).map(o => o.id);
+      const guard = changed.length ? " AND NOT EXISTS(SELECT 1 FROM deliveries WHERE business_id=? AND order_id IN (SELECT value FROM json_each(?)) AND status IN ('available','accepted','picked_up'))" : '';
+      const result = await db.prepare('UPDATE businesses SET state=?,name=?,revision=revision+1,updated_at=? WHERE id=? AND owner_id=? AND revision=?' + guard).bind(JSON.stringify(state), state.settings.name, now, row.id, user.id, input.revision, ...(changed.length ? [row.id, JSON.stringify(changed)] : [])).run();
       if (result.meta.changes !== 1) fail(409, 'Boshqa oynada o‘zgarish bor. Sahifani yangilang.');
-      return json({ business: { ...businessInfo(row), name: state.settings.name, revision: row.revision + 1, updatedAt: now }, state });
+      return json({ business: { ...businessInfo(row), name: state.settings.name, revision: row.revision + 1, updatedAt: now }, state, ...await Courier.ownerData(db, row.id) });
     }
     fail(404, 'Manzil topilmadi.');
   } catch (error) {
