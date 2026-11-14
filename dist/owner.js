@@ -14,11 +14,43 @@
     return result;
   };
   API.refresh = async () => { API.businesses = (await API.request('/businesses')).businesses; };
-  API.open = async id => {
+  API.remember = id => { try { sessionStorage.setItem('birga.business.' + API.user.id, id); } catch {} };
+  API.open = async (id, view = 'orders') => {
     const result = await API.request('/businesses/' + id + '/state');
     API.business = result.business;
+    API.remember(id);
     API.updateSwitcher();
-    window.dispatchEvent(new CustomEvent('birga:business', { detail: result }));
+    window.dispatchEvent(new CustomEvent('birga:business', { detail: { ...result, view } }));
+  };
+  API.restore = async () => {
+    let selected = null;
+    try { selected = sessionStorage.getItem('birga.business.' + API.user.id); } catch {}
+    const business = API.businesses.find(b => b.id === selected) || (selected === null && API.businesses.length === 1 ? API.businesses[0] : null);
+    if (business) await API.open(business.id, 'overview');
+  };
+  API.choose = async view => {
+    if (API.businesses.length === 1) return API.open(API.businesses[0].id, view);
+    const dialog = $('#choose-business'), list = $('#choose-business-list');
+    list.replaceChildren();
+    $('#choose-business-message').textContent = API.businesses.length ? 'Bu bo‘lim qaysi biznes uchun ochilsin?' : 'Bu bo‘limdan foydalanish uchun avval biznes qo‘shing.';
+    $('#choose-business-title').textContent = API.businesses.length ? 'Biznesni tanlang' : 'Birinchi biznesingizni qo‘shing';
+    $('#choose-business-error').textContent = '';
+    for (const business of API.businesses) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'business-choice'; button.dataset.businessId = business.id;
+      const title = document.createElement('b'), kind = document.createElement('small');
+      title.textContent = business.name; kind.textContent = API.kinds[business.kind] + ' · Ochish →';
+      button.append(title, kind);
+      button.onclick = async () => {
+        list.querySelectorAll('button').forEach(b => b.disabled = true);
+        try { await API.open(business.id, view); API.pendingView = null; dialog.close(); }
+        catch (error) { $('#choose-business-error').textContent = error.message; }
+        finally { list.querySelectorAll('button').forEach(b => b.disabled = false); }
+      };
+      list.append(button);
+    }
+    API.pendingView = view;
+    dialog.showModal();
   };
   API.save = async state => {
     if (!API.business) throw Error('Avval biznesni tanlang.');
@@ -80,7 +112,7 @@
       try {
         if (id) await API.open(id);
         else {
-          await API.refresh(); API.business = null; API.updateSwitcher();
+          await API.refresh(); API.business = null; API.remember(''); API.updateSwitcher();
           window.dispatchEvent(new CustomEvent('birga:overview'));
         }
       } catch (error) { alert(error.message); API.updateSwitcher(); }
@@ -94,14 +126,16 @@
       event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true; $('#business-error').textContent = '';
       try {
         const result = await API.request('/businesses', Object.fromEntries(new FormData(event.target)));
-        await API.refresh(); await API.open(result.business.id);
+        await API.refresh(); await API.open(result.business.id, API.pendingView || 'orders'); API.pendingView = null;
         $('#business-editor').close(); event.target.reset();
       } catch (error) { $('#business-error').textContent = error.message; }
       finally { button.disabled = false; }
     };
     $('#cancel-business').onclick = () => $('#business-editor').close();
+    $('#cancel-choose-business').onclick = () => { $('#choose-business').close(); API.pendingView = null; };
+    $('#choose-create-business').onclick = () => API.create();
     $('#app-shell').hidden = false;
     return { user };
   };
-  API.create = () => { $('#business-error').textContent = ''; $('#business-editor').showModal(); };
+  API.create = () => { $('#choose-business').close(); $('#business-error').textContent = ''; $('#business-editor').showModal(); };
 })();

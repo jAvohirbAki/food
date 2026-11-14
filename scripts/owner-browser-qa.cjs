@@ -75,8 +75,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await fill('#auth-form', { name: 'Dilshod Karimov', email: 'owner-qa@example.com', password: 'OwnerQaPassword-2026' });
     await until("document.querySelectorAll('#navigation button').length===10", 'owner dashboard');
     assert.ok(await evaluate("document.querySelector('.portfolio-empty').textContent.includes('Birinchi biznes')"));
+    assert.equal(await evaluate("document.querySelectorAll('#navigation button:disabled').length"), 0);
+    await click('[data-view="orders"]');
+    await until("document.querySelector('#choose-business').open");
+    assert.ok(await evaluate("document.querySelector('#choose-business-message').textContent.includes('avval biznes qo‘shing')"));
+    await click('#cancel-choose-business');
     const restaurant = await createBusiness('Rayhon Kitchen', 'restaurant');
     assert.equal(await evaluate("document.querySelectorAll('.order-card').length"), 0);
+    // A single business opens the requested panel automatically.
+    await evaluate("(()=>{const select=document.querySelector('#business-select');select.value='';return select.onchange({target:select})})()");
+    assert.equal(await evaluate('OwnerAPI.business'), null);
+    await view('menu');
+    assert.equal(await evaluate('OwnerAPI.business.id'), restaurant);
+    assert.equal(await evaluate("document.querySelector('#choose-business').open"), false);
     await view('menu'); await click('#page-action');
     await submit({ name: 'To‘y oshi', cat: 'Milliy taomlar', price: 38000, img: '', modifiers: 'Salat +8000' });
     assert.ok(await evaluate("document.querySelector('#content').textContent.includes('To‘y oshi')"));
@@ -95,6 +106,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await view('overview');
     assert.equal(await evaluate('OwnerAPI.businesses[0].sales'), 76000, await evaluate("document.querySelector('.business-sales').textContent"));
     const shop = await createBusiness('Birga Store', 'shop');
+    // From 'all businesses', the chooser must lead to the panel actually clicked.
+    await evaluate("(()=>{const select=document.querySelector('#business-select');select.value='';return select.onchange({target:select})})()");
+    await click('[data-view="staff"]'); await until("document.querySelector('#choose-business').open");
+    assert.equal(await evaluate("document.querySelectorAll('#choose-business-list button').length"), 2);
+    await click(`[data-business-id="${shop}"]`);
+    await until("!document.querySelector('#choose-business').open && document.querySelector('[data-view=staff]').getAttribute('aria-current')==='page'");
+    assert.equal(await evaluate('OwnerAPI.business.id'), shop);
     await view('menu'); assert.ok(!await evaluate("document.querySelector('#content').textContent.includes('To‘y oshi')"));
     await click('#page-action'); await submit({ name: 'Daftar', cat: 'Umumiy', price: 12000, img: '', modifiers: '' });
     // A failed API write must not update the rendered or stored data.
@@ -117,9 +135,17 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await evaluate('window.qaBeforeReload=true');
     await send('Page.reload'); await until("window.qaBeforeReload===undefined && document.querySelectorAll('.business-card').length===3");
     assert.equal(await evaluate('OwnerAPI.businesses.length'), 3);
+    await until(`OwnerAPI.business?.id===${JSON.stringify(service)}`, 'restore selected business');
+    await view('orders');
+    assert.equal(await evaluate("document.querySelector('#choose-business').open"), false);
     await evaluate(`OwnerAPI.open(${JSON.stringify(restaurant)})`);
     await view('menu'); assert.ok(await evaluate("document.querySelector('#content').textContent.includes('To‘y oshi')"));
     assert.ok(!await evaluate("document.querySelector('#content').textContent.includes('Daftar')"));
+    // A slow portfolio refresh must not overwrite a later navigation click.
+    await evaluate("document.querySelector('[data-view=overview]').click();document.querySelector('[data-view=orders]').click()");
+    await until("document.querySelector('[data-view=orders]').getAttribute('aria-current')==='page'");
+    await delay(150);
+    assert.equal(await evaluate("document.querySelector('[data-view=orders]').getAttribute('aria-current')"), 'page');
     for (const name of ['orders','menu','hours','promos','finance','analytics','reviews','staff','settings','overview']) {
       await view(name); assert.ok(await evaluate("document.querySelector('#content').textContent.length>50"), name + ' renders');
     }
@@ -136,6 +162,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await fill('#auth-form', { email: 'owner-qa@example.com', password: 'OwnerQaPassword-2026' });
     await until("document.querySelectorAll('.business-card').length===3");
     assert.deepEqual(errors, []);
-    console.log('Browser QA passed: signup/login/logout, 3 business types, isolated records, order lifecycle, server persistence, failed writes, CSV import, 10 sections, desktop/mobile layouts.');
+    console.log('Browser QA passed: navigation with no business, single-business auto-selection, multi-business chooser, selection after reload, signup/login/logout, isolated records, order lifecycle, failed writes, CSV import, 10 sections, desktop/mobile layouts.');
   } finally { if (ws) ws.close(); browser.kill(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
