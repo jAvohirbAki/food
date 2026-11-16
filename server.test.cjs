@@ -61,6 +61,47 @@ test('food catalog exposes only menu data and customer orders reach owner exactl
   assert.equal((await h.request('/food/orders',{data:{...payload,requestId:crypto.randomUUID()}})).status,409);
 });
 
+test('customer tracks one order through owner preparation and courier delivery with private access', async t => {
+  const h = await harness(t), owner = await h.register(), id = await h.business(owner, 'Connected Kitchen');
+  const path = '/businesses/' + id;
+  let state = await h.state(owner, id);
+  const minute = Number(new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Tashkent', minute:'2-digit' }).format(new Date()));
+  state.state.hours.forEach(h => { h.open = minute === 59 ? '00:01' : '00:00'; h.close = minute === 59 ? '00:00' : '23:59'; h.off = false; });
+  state.state.settings.phone = '+998901111111'; state.state.branches[0].address = 'Toshkent, Amir Temur 24';
+  state.state.menu = [{ id:1, name:'Osh', cat:'Milliy taomlar', price:38000, img:'', modifiers:'', stop:false }];
+  assert.equal((await h.save(owner,id,state)).status,200);
+  const requestId = crypto.randomUUID();
+  const created = await h.request('/food/orders', { data:{ restaurantId:id, requestId, branch:1, customer:'Xaridor', phone:'+998902222222', address:'Toshkent, 12-uy', items:[{id:1,qty:2,price:38000}] } });
+  assert.equal(created.status,201);
+  const track = () => h.request('/food/orders/'+id, { headers:{ 'X-Birga-Order':requestId } });
+  assert.equal((await h.request('/food/orders/'+id)).status,404);
+  assert.equal((await h.request('/food/orders/'+id,{headers:{'X-Birga-Order':crypto.randomUUID()}})).status,404);
+  assert.equal((await track()).data.order.status,'new');
+  state = await h.state(owner,id);
+  for (const status of ['preparing','ready']) {
+    state.state.orders[0].status=status;
+    if(status==='preparing'){state.state.orders[0].minutes=20;state.state.orders[0].accepted=1;}
+    const saved=await h.save(owner,id,state);assert.equal(saved.status,200);state=saved.data;
+    assert.equal((await track()).data.order.status,status);
+  }
+  const signup=await h.request('/courier/auth/register',{data:{name:'Kuryer',email:'connected-courier@example.com',password:'TestPassword-2026!',phone:'+998903333333',vehicle:'bicycle',city:'Toshkent'}});
+  assert.equal(signup.status,201);const courier=signup.cookie;
+  const invite=await h.request(path+'/courier-invite',{cookie:owner,data:{}});
+  assert.equal((await h.request('/courier/join',{cookie:courier,data:{code:invite.data.code}})).status,200);
+  assert.equal((await h.request('/courier/profile',{cookie:courier,method:'PUT',data:{name:'Kuryer',phone:'+998903333333',vehicle:'bicycle',city:'Toshkent',online:true}})).status,200);
+  const dispatched=await h.request(path+'/deliveries',{cookie:owner,data:{orderId:created.data.order.id,fee:15000}});
+  assert.equal(dispatched.status,201);const delivery=dispatched.data.deliveries[0].id;
+  assert.equal((await track()).data.order.delivery.status,'available');
+  for(const [action,status] of [['accept','accepted'],['pickup','picked_up'],['deliver','delivered']]){
+    assert.equal((await h.request('/courier/jobs/'+delivery+'/'+action,{cookie:courier,data:{}})).status,200);
+    const tracked=await track();assert.equal(tracked.data.order.delivery.status,status);
+    assert.equal(tracked.data.order.phone,undefined);assert.equal(tracked.data.order.address,undefined);assert.equal(tracked.data.order.requestId,undefined);
+  }
+  assert.equal((await track()).data.order.status,'done');
+  assert.equal((await h.state(owner,id)).state.orders[0].status,'done');
+  assert.equal((await h.request('/courier/dashboard',{cookie:courier})).data.stats.earned,15000);
+});
+
 test('authentication, CSRF protection, password validation and session revocation', async t => {
   const h = await harness(t);
   assert.equal((await h.request('/businesses')).status, 401);

@@ -225,6 +225,16 @@ export async function handleApi(request, env, ip = 'unknown') {
           categories: s.categories, menu: s.menu.map(p => ({ id: p.id, name: p.name, cat: p.cat, price: p.price, img: p.img, stop: p.stop })) };
       }).filter(r => r.menu.length) });
     }
+    const tracking = route.match(/^\/api\/food\/orders\/([a-f0-9-]{36})$/);
+    if (tracking && method === 'GET') {
+      const requestId = request.headers.get('X-Birga-Order') || '';
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(requestId)) fail(404, 'Buyurtma topilmadi.');
+      const row = await db.prepare("SELECT state FROM businesses WHERE id=? AND kind='restaurant'").bind(tracking[1]).first();
+      const s = row && JSON.parse(row.state), order = s?.orders.find(o => o.requestId === requestId);
+      if (!order) fail(404, 'Buyurtma topilmadi.');
+      const delivery = await db.prepare('SELECT status,fee FROM deliveries WHERE business_id=? AND order_id=?').bind(tracking[1], order.id).first();
+      return json({ order: { id: order.id, restaurant: s.settings.name, status: order.status, total: Core.total(order), created: order.created, minutes: order.minutes, reason: order.reason, delivery: delivery && delivery.status !== 'cancelled' ? delivery : null } });
+    }
     if (route === '/api/food/orders' && method === 'POST') {
       await limit(db, 'food:' + await digest(ip), 30, 3600000);
       const input = await body(request);

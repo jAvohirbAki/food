@@ -99,3 +99,18 @@ bitta buyurtma sifatida qaytariladi. To‘lov yetkazilganda naqd; yetkazish narx
 vaqtini restoran tasdiqlaydi. Namuna menyulardan haqiqiy buyurtma yuborilmaydi.
 Restoran katalogi bo‘sh bo‘lsa namuna menyular ko‘rinadi.
 Xaridor brauzer tekshiruvi: node scripts/food-browser-qa.cjs
+
+UCHALA PANEL BIR SAYTDA
+Xaridor: / ; biznes egasi: /admin ; kuryer: /courier.
+Har bir panel tepasidagi umumiy menyu orqali boshqa panelga o'tiladi.
+Egasi va kuryerning hisobi, ruxsatlari va sessiyalari alohida qoladi.
+
+Xaridor -> egasi tayyorlaydi -> kuryer yetkazadi -> xaridor holatni ko'radi.
+Xaridorning Buyurtmalarim bo'limi shu brauzerdagi oxirgi 10 buyurtmani
+ko'rsatadi; ochiq turganda holat har 15 soniyada serverdan yangilanadi.
+Katalog har 30 soniyada yangilanib, egasi o'zgartirgan menyuni oladi.
+Buyurtma holati /api/food/orders/:restaurantId orqali, X-Birga-Order
+headeridagi taxmin qilib bo'lmaydigan requestId bilan olinadi. Javobda
+mijozning telefoni, manzili yoki restoran ichki ma'lumotlari berilmaydi.
+Brauzer ma'lumotlari tozalansa yoki boshqa qurilmadan kirilsa ushbu
+ro'yxat tiklanmaydi; xaridorning alohida hisobi hozircha mavjud emas.
